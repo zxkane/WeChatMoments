@@ -8,8 +8,11 @@ version = '1.0'
 jar {
     manifest {
         attributes 'Implementation-Title': 'Wechat Moments',
-                   'Implementation-Version': version
+                   'Implementation-Version': version,
+                   'Main-Class': 'com.github.zxkane.wechat.moments.App'
     }
+    baseName = project.name + '-all'
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
 }
 
 task wrapper(type: Wrapper) {
