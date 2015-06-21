@@ -113,6 +113,8 @@ public class App {
 		capabilities.setCapability("appActivity", ".ui.LauncherUI");
 		capabilities.setCapability("noReset", "true");
 		capabilities.setCapability("newCommandTimeout", "86400");
+		capabilities.setCapability("unicodeKeyboard", "true");
+		capabilities.setCapability("resetKeyboard", "true");
 
 		try {
 			logger.trace("Creating driver ... ", false);
