@@ -4,11 +4,13 @@ import static java.util.Arrays.asList;
 import io.appium.java_client.AppiumDriver;
 import io.appium.java_client.android.AndroidDriver;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
@@ -72,6 +74,9 @@ public class App {
 			+ "/android.widget.LinearLayout[2]/android.widget.LinearLayout[2]/android.widget.LinearLayout[1]/android.widget.LinearLayout/android.widget.TextView";
 	public static final String MOMENT_PHOTO_VIEW = MOMENT_INDEX_VIEW
 			+ "/android.widget.LinearLayout/android.widget.LinearLayout/android.widget.LinearLayout/android.widget.FrameLayout/android.widget.FrameLayout/android.view.View";
+	public static final String PHOTO_IMAGE_VIEW = "//android.widget.Gallery/android.widget.ImageView";
+	public static final String DOWNLOAD_IMAGE = "//android.widget.TextView[@text='保存到手机']";
+	public static final String MORE_TEXT_VIEW = "//android.widget.TextView[@content-desc='更多']";
 
 	public static void main(String[] args) throws IOException,
 			InterruptedException {
@@ -100,7 +105,10 @@ public class App {
 	private AppiumDriver driver = null;
 
 	private void run(final String wechatId, final String serverURL)
-			throws MalformedURLException {
+			throws IOException, InterruptedException {
+
+		cleanWeiXinFiles();
+
 		int exitCode = 0;
 
 		URL serverUrl = new URL(serverURL);
@@ -188,7 +196,7 @@ public class App {
 				throw new ExitException(0);
 			}
 
-			scollAndProcess(driver, 1);
+			scollAndProcess(driver, driverMWait, 1);
 		} catch (NoSuchElementException e) {
 			logger.error("Failed to find expected element.", e);
 		} catch (ExitException e) {
@@ -203,8 +211,8 @@ public class App {
 		System.exit(exitCode);
 	}
 
-	private void scollAndProcess(AppiumDriver driver, int times)
-			throws InterruptedException {
+	private void scollAndProcess(AppiumDriver driver, WebDriverWait driverWait,
+			int times) throws InterruptedException, IOException {
 		logger.trace("Scoll down album for viewing more");
 		TouchActions touch = new TouchActions(driver).flick(
 				driver.findElement(By.xpath("//android.widget.ListView")), 0,
@@ -219,17 +227,19 @@ public class App {
 				WebElement moment = driver.findElement(By.xpath(String.format(
 						MOMENT_INDEX_VIEW, index)));
 				logger.trace("Processing the moment #{}...", index);
-				processMoment(moment, driver, index);
+				processMoment(moment, driver, index, driverWait);
 				index++;
 			}
 		} catch (NoSuchElementException e) {
 			// FIXME better way to find out already reaching the bottom
-			if (times < 6)
-				scollAndProcess(driver, times + 1);
+			if (times < 2)
+				scollAndProcess(driver, driverWait, times + 1);
 		}
 	}
 
-	private void processMoment(WebElement moment, AppiumDriver driver, int index) {
+	private void processMoment(WebElement moment, AppiumDriver driver,
+			int index, WebDriverWait driverMWait) throws IOException,
+			InterruptedException {
 		List<WebElement> dateViews = driver.findElements(By.xpath(String
 				.format(MOMENT_DATE_VIEW, index)));
 		// TODO reuse previous date information if list is empty
@@ -240,14 +250,63 @@ public class App {
 		try {
 			WebElement photoView = driver.findElement(By.xpath(String.format(
 					MOMENT_PHOTO_VIEW, index)));
-			// TODO process photo
 			String momentText = driver.findElement(
 					By.xpath(String.format(MOMENT_TEXT_VIEW, index))).getText();
 			logger.trace("\t\tmoment was published with content '{}'.",
 					momentText);
+
+			photoView.click();
+			try {
+				logger.trace("\tOpening photos of moment...");
+				driverMWait.until(ExpectedConditions
+						.visibilityOfAllElementsLocatedBy(By
+								.xpath(PHOTO_IMAGE_VIEW)));
+				// WebElement imageView =
+				// driver.findElement(By.xpath(PHOTO_IMAGE_VIEW));
+				// TODO swipe to next image and save it
+				driver.findElement(By.xpath(MORE_TEXT_VIEW)).click();
+				driver.findElement(By.xpath(DOWNLOAD_IMAGE)).click();
+
+				ZipInputStream input = new ZipInputStream(
+						new ByteArrayInputStream(driver
+								.pullFolder("/sdcard/tencent/MicroMsg/WeiXin")));
+				try {
+					ZipEntry entry;
+					while ((entry = input.getNextEntry()) != null) {
+						logger.trace("\t\t\tGot saved image file: {}",
+								entry.getName());
+						// TODO put your logic here to process the pic
+					}
+				} finally {
+					input.close();
+				}
+			} catch (IOException e) {
+				logger.error(
+						"Failed to pull the saved photos back from device.", e);
+			} catch (TimeoutException e) {
+				try {
+					driver.findElement(By
+							.xpath("//android.widget.LinearLayout/android.widget.RelativeLayout/android.widget.ImageView"));
+					logger.trace("\t\tmoment was shared with video can't be saved.");
+				} catch (NoSuchElementException e1) {
+					throw e;
+				}
+			} finally {
+				try {
+					cleanWeiXinFiles();
+				} finally {
+					driver.navigate().back();
+				}
+			}
 		} catch (NoSuchElementException e) {
 			// TODO only text without photo
 			logger.trace("\t\tmoment was published without original photos.");
 		}
+	}
+
+	CommandPrompt cmd = new CommandPrompt();
+
+	private void cleanWeiXinFiles() throws IOException, InterruptedException {
+		cmd.runCommand("adb shell rm -f /sdcard/tencent/MicroMsg/WeiXin/*");
 	}
 }
