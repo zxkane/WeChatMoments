@@ -30,3 +30,7 @@ java -jar build/libs/WeChatMoments-all-1.0.jar -c <wechat id>
 * Wechat for Android 6.2
 * Google Nexus 4(Android 5.1.1)
 * Mac 10.10.3
+
+### Note if running this app in your daily used physical device
+* The app will remove all earlier saved files in WeChat, pls backup them if necessary
+* The default input method will be changed to *appium input method* for inputting non-ascii characters, you need change it back to your previous input method manually in *settings*
